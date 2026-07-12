@@ -14,6 +14,8 @@ from threatweave.config import Settings, get_settings
 from threatweave.graph.base import GraphStore
 from threatweave.graph.factory import build_store
 from threatweave.ingest import ingest_otx_payload
+from threatweave.vector.base import VectorStore
+from threatweave.vector.factory import build_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -38,21 +40,29 @@ def _build_store(settings: Settings) -> GraphStore:
 async def lifespan(app: FastAPI):
     """Create the graph store on startup and close it on shutdown.
 
-    If a store was injected via :func:`create_app` (as in tests), it is used
+    Any store/vector store injected via :func:`create_app` (as in tests) is used
     as-is and left for the caller to close.
     """
+    settings = get_settings()
     owns_store = app.state.store is None
     if owns_store:
-        app.state.store = _build_store(get_settings())
+        app.state.store = _build_store(settings)
+    owns_vector_store = app.state.vector_store is None
+    if owns_vector_store:
+        app.state.vector_store = build_vector_store(settings)
     try:
         yield
     finally:
         if owns_store:
             app.state.store.close()
+        if owns_vector_store and app.state.vector_store is not None:
+            app.state.vector_store.close()
 
 
-def create_app(store: GraphStore | None = None) -> FastAPI:
-    """Build the FastAPI app, optionally with a pre-built graph store injected."""
+def create_app(
+    store: GraphStore | None = None, vector_store: VectorStore | None = None
+) -> FastAPI:
+    """Build the FastAPI app, optionally with a graph/vector store injected."""
     app = FastAPI(
         title="ThreatWeave",
         version="0.1.0",
@@ -60,6 +70,7 @@ def create_app(store: GraphStore | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.store = store
+    app.state.vector_store = vector_store
     app.include_router(router)
     return app
 
