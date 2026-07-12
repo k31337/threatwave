@@ -1,0 +1,57 @@
+# Local infrastructure for ThreatWeave.
+# Secrets are supplied via the .env file (never committed); see .env.example.
+services:
+  neo4j:
+    image: neo4j:5.22
+    container_name: threatweave-neo4j
+    environment:
+      # NEO4J_AUTH takes the form user/password.
+      NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
+    ports:
+      - "7474:7474"   # HTTP browser UI
+      - "7687:7687"   # Bolt protocol (driver)
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    # pgvector-enabled Postgres, reserved for the embeddings phase.
+    image: pgvector/pgvector:pg16
+    container_name: threatweave-postgres
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: threatweave-api
+    env_file: .env
+    environment:
+      # Point the service at the compose network hostnames, overriding localhost.
+      NEO4J_URI: "bolt://neo4j:7687"
+      POSTGRES_HOST: "postgres"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  neo4j_data:
+  postgres_data:
