@@ -28,6 +28,7 @@ class RelationType(StrEnum):
     COMMUNICATES_WITH = "communicates_with"  # IOC -> IOC
     USES = "uses"  # Campaign/Actor -> TTP
     TARGETS = "targets"  # Campaign/Actor -> Sector
+    SEMANTIC_SIMILARITY = "semantic_similarity"  # Campaign <-> Campaign (by embedding)
 
 
 class Node(BaseModel):
@@ -45,13 +46,18 @@ class Node(BaseModel):
 
 
 class Edge(BaseModel):
-    """A directed relationship between two nodes, referenced by node id."""
+    """A directed relationship between two nodes, referenced by node id.
+
+    ``score`` is set only for weighted relationships (semantic similarity carries
+    its cosine score); structural edges leave it ``None``.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     source: str
     target: str
     type: RelationType
+    score: float | None = None
 
 
 class Subgraph(BaseModel):
