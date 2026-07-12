@@ -1,0 +1,97 @@
+"""Tests for the in-memory GraphStore (contract shared with the Neo4j backend)."""
+
+from __future__ import annotations
+
+import pytest
+
+from threatweave.graph.memory import InMemoryGraphStore
+from threatweave.models.graph import RelationType, ioc_node_id
+from threatweave.models.ioc import IOC, Actor, Campaign, IOCType
+
+
+def _ioc(value: str, ioc_type: IOCType) -> IOC:
+    return IOC(value=value, type=ioc_type)
+
+
+def test_upsert_is_idempotent() -> None:
+    store = InMemoryGraphStore()
+    ioc = _ioc("8.8.8.8", IOCType.IPV4)
+
+    first = store.upsert_ioc(ioc)
+    second = store.upsert_ioc(ioc)
+
+    assert first.id == second.id
+    assert store.get_node(ioc_node_id(ioc)) is not None
+
+
+def test_get_node_missing_returns_none() -> None:
+    assert InMemoryGraphStore().get_node("ioc:ipv4:1.1.1.1") is None
+
+
+def test_add_edge_requires_existing_nodes() -> None:
+    store = InMemoryGraphStore()
+    store.upsert_ioc(_ioc("1.2.3.4", IOCType.IPV4))
+
+    with pytest.raises(KeyError):
+        store.add_edge("ioc:ipv4:1.2.3.4", "ioc:domain:evil.com", RelationType.RESOLVES_TO)
+
+
+def test_neighborhood_of_unknown_node_is_empty() -> None:
+    sub = InMemoryGraphStore().neighborhood("ioc:ipv4:9.9.9.9")
+    assert sub.nodes == []
+    assert sub.edges == []
+
+
+def test_neighborhood_single_hop() -> None:
+    store = InMemoryGraphStore()
+    ip = _ioc("1.2.3.4", IOCType.IPV4)
+    domain = _ioc("evil.com", IOCType.DOMAIN)
+    store.upsert_ioc(ip)
+    store.upsert_ioc(domain)
+    store.add_edge(ioc_node_id(domain), ioc_node_id(ip), RelationType.RESOLVES_TO)
+
+    sub = store.neighborhood(ioc_node_id(ip), depth=1)
+
+    node_ids = {n.id for n in sub.nodes}
+    assert node_ids == {ioc_node_id(ip), ioc_node_id(domain)}
+    assert len(sub.edges) == 1
+    assert sub.edges[0].type is RelationType.RESOLVES_TO
+
+
+def test_neighborhood_respects_depth() -> None:
+    # Chain: ip -- domain -- actor. From ip, depth=1 sees domain only; depth=2
+    # also reaches the actor.
+    store = InMemoryGraphStore()
+    ip = _ioc("1.2.3.4", IOCType.IPV4)
+    domain = _ioc("evil.com", IOCType.DOMAIN)
+    store.upsert_ioc(ip)
+    store.upsert_ioc(domain)
+    store.upsert_actor(Actor(name="APT-Test"))
+    store.add_edge(ioc_node_id(domain), ioc_node_id(ip), RelationType.RESOLVES_TO)
+    store.add_edge(ioc_node_id(domain), "actor:APT-Test", RelationType.ATTRIBUTED_TO)
+
+    depth1 = {n.id for n in store.neighborhood(ioc_node_id(ip), depth=1).nodes}
+    assert "actor:APT-Test" not in depth1
+
+    depth2 = {n.id for n in store.neighborhood(ioc_node_id(ip), depth=2).nodes}
+    assert "actor:APT-Test" in depth2
+
+
+def test_neighborhood_traversal_is_undirected() -> None:
+    # Edge domain -> ip; querying from the ip (the target) must still reach it.
+    store = InMemoryGraphStore()
+    ip = _ioc("1.2.3.4", IOCType.IPV4)
+    domain = _ioc("evil.com", IOCType.DOMAIN)
+    store.upsert_ioc(ip)
+    store.upsert_ioc(domain)
+    store.add_edge(ioc_node_id(domain), ioc_node_id(ip), RelationType.RESOLVES_TO)
+
+    reachable = {n.id for n in store.neighborhood(ioc_node_id(ip), depth=1).nodes}
+    assert ioc_node_id(domain) in reachable
+
+
+def test_campaign_node_kind() -> None:
+    store = InMemoryGraphStore()
+    node = store.upsert_campaign(Campaign(name="Op-Test"))
+    assert node.kind == "campaign"
+    assert node.label == "Op-Test"
