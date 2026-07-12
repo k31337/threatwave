@@ -24,6 +24,7 @@ def get_provider(settings: Settings) -> LLMProvider:
             model=settings.llm.model or "gpt-4o-mini",
             max_output_tokens=settings.llm.max_output_tokens,
             max_retries=settings.llm.max_retries,
+            embed_model=settings.llm.embed_model,
         )
 
     if provider == "ollama":

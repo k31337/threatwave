@@ -73,6 +73,10 @@ class LLMSettings(BaseSettings):
     max_output_tokens: int = 1_024
     max_retries: int = 2  # transient-error retries handled by the SDK client.
 
+    # Embeddings (semantic similarity phase).
+    embed_model: str = "text-embedding-3-small"
+    embed_dim: int = 1_536
+
 
 class Settings(BaseSettings):
     """Top-level application settings, aggregating each subsystem's config."""
@@ -91,6 +95,10 @@ class Settings(BaseSettings):
     graph_backend: str = Field(default="neo4j", alias="GRAPH_BACKEND")
     # When using the memory backend, optionally seed it from the local sample.
     seed_sample: bool = Field(default=False, alias="SEED_SAMPLE")
+
+    # Vector backend for semantic similarity. "none" (default) disables it;
+    # "pgvector" uses Postgres; "memory" is an in-process store for tests/demos.
+    vector_backend: str = Field(default="none", alias="VECTOR_BACKEND")
 
     neo4j: Neo4jSettings = Field(default_factory=Neo4jSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)

@@ -70,11 +70,16 @@ def test_extract_raises_when_no_parsed_result() -> None:
         provider.extract("text")
 
 
-def test_embed_and_narrate_not_implemented() -> None:
+def test_embed_empty_input_short_circuits() -> None:
     client, _ = _make_client(_LLMExtraction(ttps=[], actor=None, target_sectors=[]))
     provider = OpenAIProvider(client=client)
-    with pytest.raises(NotImplementedError):
-        provider.embed(["x"])
+    # No API attribute is touched because the empty list short-circuits.
+    assert provider.embed([]) == []
+
+
+def test_narrate_not_implemented() -> None:
+    client, _ = _make_client(_LLMExtraction(ttps=[], actor=None, target_sectors=[]))
+    provider = OpenAIProvider(client=client)
     with pytest.raises(NotImplementedError):
         provider.narrate(object())
 

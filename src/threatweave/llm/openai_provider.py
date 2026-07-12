@@ -62,6 +62,7 @@ class OpenAIProvider(LLMProvider):
         client: OpenAI | None = None,
         max_output_tokens: int = 1_024,
         max_retries: int = 2,
+        embed_model: str = "text-embedding-3-small",
     ) -> None:
         """Create the provider.
 
@@ -71,8 +72,10 @@ class OpenAIProvider(LLMProvider):
             client: Optional pre-built OpenAI client (injected in tests).
             max_output_tokens: Cap on completion tokens per call.
             max_retries: Transient-error retries handled by the SDK client.
+            embed_model: Model used by :meth:`embed`.
         """
         self._model = model
+        self._embed_model = embed_model
         self._max_output_tokens = max_output_tokens
         self._client = client or OpenAI(api_key=api_key, max_retries=max_retries)
 
@@ -119,7 +122,27 @@ class OpenAIProvider(LLMProvider):
         return ExtractionResult(ttps=ttps, actor=actor, target_sectors=sectors)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        raise NotImplementedError("embeddings arrive in the pgvector phase")
+        """Return one embedding vector per input string.
+
+        Order is preserved so callers can zip inputs with their vectors. An empty
+        input list short-circuits without calling the API.
+        """
+        inputs = list(texts)
+        if not inputs:
+            return []
+
+        response = self._client.embeddings.create(model=self._embed_model, input=inputs)
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            log_usage(
+                self._embed_model,
+                Usage(usage.prompt_tokens, 0),
+            )
+
+        # The API returns items with an ``index``; sort defensively to preserve order.
+        ordered = sorted(response.data, key=lambda item: item.index)
+        return [list(item.embedding) for item in ordered]
 
     def narrate(self, subgraph: object) -> str:
         raise NotImplementedError("narratives arrive in a later phase")
