@@ -68,6 +68,11 @@ class LLMSettings(BaseSettings):
     api_key: str = ""
     model: str = ""
 
+    # Cost / safety controls for extraction calls.
+    max_input_chars: int = 48_000  # ~12k tokens; longer input is truncated.
+    max_output_tokens: int = 1_024
+    max_retries: int = 2  # transient-error retries handled by the SDK client.
+
 
 class Settings(BaseSettings):
     """Top-level application settings, aggregating each subsystem's config."""

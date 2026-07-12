@@ -9,5 +9,6 @@ decide structural relationships; that is deterministic graph logic.
 """
 
 from threatweave.llm.base import TTP, ExtractionResult, LLMProvider
+from threatweave.llm.factory import get_provider
 
-__all__ = ["LLMProvider", "ExtractionResult", "TTP"]
+__all__ = ["LLMProvider", "ExtractionResult", "TTP", "get_provider"]
