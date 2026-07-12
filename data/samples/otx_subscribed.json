@@ -1,0 +1,45 @@
+{
+  "results": [
+    {
+      "id": "pulse-0001",
+      "name": "Synthetic APT-Test Infrastructure",
+      "indicators": [
+        {
+          "type": "IPv4",
+          "indicator": "203.0.113.10",
+          "created": "2026-01-05T10:00:00"
+        },
+        {
+          "type": "domain",
+          "indicator": "malicious.example",
+          "created": "2026-01-05T10:01:00"
+        },
+        {
+          "type": "hostname",
+          "indicator": "c2.malicious.example",
+          "created": "2026-01-05T10:02:00"
+        },
+        {
+          "type": "URL",
+          "indicator": "http://malicious.example/payload.bin",
+          "created": "2026-01-05T10:03:00"
+        },
+        {
+          "type": "FileHash-MD5",
+          "indicator": "d41d8cd98f00b204e9800998ecf8427e",
+          "created": "2026-01-05T10:04:00"
+        },
+        {
+          "type": "FileHash-SHA256",
+          "indicator": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "created": "2026-01-05T10:05:00"
+        },
+        {
+          "type": "email",
+          "indicator": "operator@malicious.example",
+          "created": "2026-01-05T10:06:00"
+        }
+      ]
+    }
+  ]
+}
