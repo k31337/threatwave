@@ -81,6 +81,12 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
 
+    # Graph backend selection. "neo4j" (default) uses the running database;
+    # "memory" uses the in-process store, handy for a no-Docker demo.
+    graph_backend: str = Field(default="neo4j", alias="GRAPH_BACKEND")
+    # When using the memory backend, optionally seed it from the local sample.
+    seed_sample: bool = Field(default=False, alias="SEED_SAMPLE")
+
     neo4j: Neo4jSettings = Field(default_factory=Neo4jSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     otx: OTXSettings = Field(default_factory=OTXSettings)
