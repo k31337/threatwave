@@ -20,6 +20,11 @@ that is graph logic, and putting AI there would add cost and hallucinations to
 data that must be exact. All AI access goes through a single, swappable
 `LLMProvider` interface (`extract` / `embed` / `narrate`).
 
+**Hybrid extraction.** Obvious IOCs (IPs, domains, hashes, URLs) are pulled by
+the deterministic regex parser at zero token cost. The LLM is used *only* for
+what regex cannot recover — TTPs (mapped to MITRE ATT&CK), the attributed actor
+and targeted sectors — so the two never duplicate work.
+
 ## Stack
 
 - Python 3.11+, FastAPI
@@ -33,15 +38,20 @@ data that must be exact. All AI access goes through a single, swappable
 ```
 src/threatweave/
 ├── config.py            # pydantic-settings, loaded from .env
-├── models/              # internal domain models (IOC, Actor, Campaign, graph value objects)
+├── models/              # domain models (IOC, Actor, Campaign, TTP, graph value objects) + normalization
 ├── parsers/             # deterministic regex IOC parser (+ refanging)
-├── connectors/          # ingestion sources (AlienVault OTX)
-├── graph/               # GraphStore port + Neo4j and in-memory adapters
+├── connectors/          # ingestion sources: AlienVault OTX + free-text/URL documents
+├── graph/               # GraphStore port + Neo4j and in-memory adapters + factory
 ├── correlation/         # correlate(): deterministic graph traversal
-├── ingest.py            # OTX payload -> graph (Campaign per pulse)
-├── llm/                 # LLMProvider interface (defined, not yet implemented)
+├── ingest.py            # OTX payload / extracted document -> graph
+├── llm/                 # LLMProvider interface + OpenAI provider, Ollama stub, cost, factory
+├── cli.py               # `threatweave` CLI (ingest-doc)
 └── api/                 # FastAPI app and routes
 ```
+
+The graph models five node kinds — `IOC`, `Actor`, `Campaign`, `TTP`, `Sector` —
+linked by deterministic relationships (`PART_OF`, `ATTRIBUTED_TO`, `RESOLVES_TO`,
+`USES`, `TARGETS`).
 
 ## Configuration
 
@@ -52,9 +62,12 @@ in values (never commit `.env`):
 cp .env.example .env
 ```
 
-Key variables: `NEO4J_*`, `POSTGRES_*`, `OTX_API_KEY`, `LLM_*`, `API_*`,
-`GRAPH_BACKEND` (`neo4j` | `memory`) and `SEED_SAMPLE`. See
-[.env.example](.env.example) for the full list.
+Key variables: `NEO4J_*`, `POSTGRES_*`, `OTX_API_KEY`, `API_*`,
+`GRAPH_BACKEND` (`neo4j` | `memory`) and `SEED_SAMPLE`. For document ingestion,
+set the LLM provider: `LLM_PROVIDER=openai`, `LLM_API_KEY=<key>`,
+`LLM_MODEL=gpt-4o-mini` (plus optional `LLM_MAX_INPUT_CHARS`,
+`LLM_MAX_OUTPUT_TOKENS`, `LLM_MAX_RETRIES`). See [.env.example](.env.example) for
+the full list.
 
 ## Install (development)
 
@@ -107,11 +120,30 @@ the running Neo4j (requires a valid `OTX_API_KEY`).
 from the value (IP, domain, hash or URL). Returns `404` if the indicator is not
 in the graph. The response is a `{ "nodes": [...], "edges": [...] }` subgraph.
 
+## Ingesting documents (CLI)
+
+`threatweave ingest-doc` ingests an unstructured threat report — a blog post,
+CERT advisory or social-media post — from a URL, a file or inline text. It runs
+hybrid extraction (regex IOCs + LLM TTPs/actor/sectors) and writes the result to
+the graph, building the `Campaign`, `Actor`, `TTP` and `Sector` nodes and their
+edges. Requires an LLM provider configured (`LLM_PROVIDER=openai`, `LLM_API_KEY`).
+
+```bash
+threatweave ingest-doc --url https://example.com/threat-report
+threatweave ingest-doc --file data/samples/threat_report.txt
+threatweave ingest-doc --text "APT-Sample phishing campaign targeting finance ..."
+```
+
+Each call prints a summary (campaign id, IOC/TTP counts, actor, sectors, and the
+estimated token cost is logged). Afterwards the extracted entities are queryable
+through `/api/correlate`.
+
 ## Testing
 
-The full suite runs offline — no Neo4j, Docker or network required (correlation
-is tested against the in-memory store, and the OTX connector against a mocked
-transport and a synthetic sample):
+The full suite runs offline — no Neo4j, Docker, network or API keys required.
+Correlation runs against the in-memory store, the OTX connector against a mocked
+transport, and the LLM provider is fully mocked (fixed responses), so extraction
+and document ingestion are tested without any real API calls:
 
 ```bash
 pytest          # run tests
@@ -131,6 +163,10 @@ ruff check .    # lint
   AlienVault OTX ingestion, Neo4j graph model with an in-memory test backend,
   deterministic correlation and a FastAPI query endpoint. No AI. The `LLMProvider`
   interface and the pgvector infrastructure are defined but not yet implemented.
-- [ ] Phase 2 — AI extraction of IOCs/TTPs from free-text reports (`extract`).
+- [x] **Phase 2 — LLM extraction**: hybrid document ingestion (`threatweave
+  ingest-doc`) — regex IOCs plus LLM-extracted TTPs (MITRE ATT&CK), actor and
+  target sectors via a swappable `OpenAIProvider` (Ollama stub reserved), with
+  token-cost logging and structured-output validation. Extraction inserts
+  `Campaign`/`Actor`/`TTP`/`Sector` nodes and their edges.
 - [ ] Phase 3 — Embeddings + pgvector semantic correlation (`embed`).
 - [ ] Phase 4 — On-demand explanatory narratives (`narrate`).
