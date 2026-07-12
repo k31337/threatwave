@@ -72,10 +72,15 @@ def html_to_text(html: str) -> tuple[str, str]:
 
 
 class DocumentIntel(BaseModel):
-    """Combined output of a document ingestion: regex IOCs + LLM extraction."""
+    """Combined output of a document ingestion: regex IOCs + LLM extraction.
+
+    ``text`` is the (possibly truncated) content that was analysed; it is the
+    basis for the document's embedding at ingestion time.
+    """
 
     report_name: str
     source: str
+    text: str = ""
     iocs: list[IOC] = Field(default_factory=list)
     extraction: ExtractionResult = Field(default_factory=ExtractionResult)
 
@@ -140,7 +145,11 @@ class DocumentConnector:
         extraction = self._provider.extract(llm_input)
         report_name = name or _derive_name(text, fallback=source)
         return DocumentIntel(
-            report_name=report_name, source=source, iocs=iocs, extraction=extraction
+            report_name=report_name,
+            source=source,
+            text=llm_input,
+            iocs=iocs,
+            extraction=extraction,
         )
 
     def from_url(self, url: str) -> DocumentIntel:

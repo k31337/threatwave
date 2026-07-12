@@ -21,6 +21,8 @@ from threatweave.graph.factory import build_store
 from threatweave.ingest import ingest_document
 from threatweave.llm.base import LLMProvider
 from threatweave.llm.factory import get_provider
+from threatweave.vector.base import VectorStore
+from threatweave.vector.factory import build_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +32,21 @@ def run_ingest_doc(
     *,
     store: GraphStore | None = None,
     provider: LLMProvider | None = None,
+    vector_store: VectorStore | None = None,
 ) -> None:
     """Execute the ``ingest-doc`` command.
 
-    ``store`` and ``provider`` may be injected (used in tests); otherwise they
-    are built from configuration.
+    ``store``, ``provider`` and ``vector_store`` may be injected (used in tests);
+    otherwise they are built from configuration. When a vector store is
+    configured (``VECTOR_BACKEND``), the document is also embedded for semantic
+    similarity.
     """
     settings = get_settings()
     provider = provider or get_provider(settings)
     owns_store = store is None
     store = store or build_store(settings)
+    owns_vector_store = vector_store is None
+    vector_store = vector_store or build_vector_store(settings)
 
     connector = DocumentConnector(provider, max_input_chars=settings.llm.max_input_chars)
     try:
@@ -53,11 +60,15 @@ def run_ingest_doc(
         else:
             intel = connector.from_text(args.text, source="inline-text")
 
-        campaign = ingest_document(store, intel)
+        campaign = ingest_document(
+            store, intel, provider=provider, vector_store=vector_store
+        )
     finally:
         connector.close()
         if owns_store:
             store.close()
+        if owns_vector_store and vector_store is not None:
+            vector_store.close()
 
     extraction = intel.extraction
     print(
