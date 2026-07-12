@@ -19,6 +19,14 @@ class GraphStore(ABC):
     # --- Writes (idempotent upserts) ---
 
     @abstractmethod
+    def upsert_node(self, node: Node) -> Node:
+        """Create or update ``node`` (keyed by its id) and return it.
+
+        The generic primitive on which the typed helpers below are built; also
+        used directly for kinds without a dedicated model (TTP, sector).
+        """
+
+    @abstractmethod
     def upsert_ioc(self, ioc: IOC) -> Node:
         """Create or update the node for ``ioc`` and return it."""
 

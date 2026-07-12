@@ -22,10 +22,12 @@ class RelationType(StrEnum):
     """
 
     RELATED_TO = "related_to"
-    ATTRIBUTED_TO = "attributed_to"  # IOC -> Actor
+    ATTRIBUTED_TO = "attributed_to"  # IOC/Campaign -> Actor
     PART_OF = "part_of"  # IOC -> Campaign, Campaign -> Actor
     RESOLVES_TO = "resolves_to"  # Domain -> IP
     COMMUNICATES_WITH = "communicates_with"  # IOC -> IOC
+    USES = "uses"  # Campaign/Actor -> TTP
+    TARGETS = "targets"  # Campaign/Actor -> Sector
 
 
 class Node(BaseModel):
@@ -72,3 +74,17 @@ def actor_node_id(name: str) -> str:
 def campaign_node_id(name: str) -> str:
     """Return the canonical node id for a campaign."""
     return f"campaign:{name}"
+
+
+def ttp_node_id(technique_id: str) -> str:
+    """Return the canonical node id for a MITRE ATT&CK technique."""
+    return f"ttp:{technique_id}"
+
+
+def sector_node_id(canonical_name: str) -> str:
+    """Return the canonical node id for a target sector.
+
+    Expects an already-normalized name (see
+    :func:`threatweave.models.normalize.normalize_sector`).
+    """
+    return f"sector:{canonical_name}"

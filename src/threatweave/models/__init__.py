@@ -5,7 +5,17 @@ across the codebase. External formats (OTX responses, STIX) are normalized into
 these types at ingestion time.
 """
 
-from threatweave.models.graph import Edge, Node, RelationType, Subgraph, ioc_node_id
+from threatweave.models.graph import (
+    Edge,
+    Node,
+    RelationType,
+    Subgraph,
+    actor_node_id,
+    campaign_node_id,
+    ioc_node_id,
+    sector_node_id,
+    ttp_node_id,
+)
 from threatweave.models.ioc import IOC, Actor, Campaign, IOCType
 
 __all__ = [
@@ -18,4 +28,8 @@ __all__ = [
     "RelationType",
     "Subgraph",
     "ioc_node_id",
+    "actor_node_id",
+    "campaign_node_id",
+    "ttp_node_id",
+    "sector_node_id",
 ]

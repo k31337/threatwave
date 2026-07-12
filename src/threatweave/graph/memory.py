@@ -31,20 +31,20 @@ class InMemoryGraphStore(GraphStore):
         # Undirected adjacency for traversal.
         self._adjacency: dict[str, set[str]] = defaultdict(set)
 
-    def _upsert(self, node: Node) -> Node:
+    def upsert_node(self, node: Node) -> Node:
         self._nodes[node.id] = node
         return node
 
     def upsert_ioc(self, ioc: IOC) -> Node:
-        return self._upsert(Node(id=ioc_node_id(ioc), kind="ioc", label=ioc.value))
+        return self.upsert_node(Node(id=ioc_node_id(ioc), kind="ioc", label=ioc.value))
 
     def upsert_actor(self, actor: Actor) -> Node:
-        return self._upsert(
+        return self.upsert_node(
             Node(id=actor_node_id(actor.name), kind="actor", label=actor.name)
         )
 
     def upsert_campaign(self, campaign: Campaign) -> Node:
-        return self._upsert(
+        return self.upsert_node(
             Node(id=campaign_node_id(campaign.name), kind="campaign", label=campaign.name)
         )
 

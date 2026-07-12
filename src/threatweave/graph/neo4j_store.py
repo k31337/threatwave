@@ -32,6 +32,8 @@ _KIND_LABELS: dict[str, str] = {
     "ioc": "IOC",
     "actor": "Actor",
     "campaign": "Campaign",
+    "ttp": "TTP",
+    "sector": "Sector",
 }
 
 
@@ -46,7 +48,7 @@ class Neo4jGraphStore(GraphStore):
 
     # --- Writes ---
 
-    def _merge_node(self, node: Node) -> Node:
+    def upsert_node(self, node: Node) -> Node:
         neo_label = _KIND_LABELS[node.kind]
         # ``neo_label`` comes from the closed ``_KIND_LABELS`` map, not user input.
         query = (
@@ -58,15 +60,15 @@ class Neo4jGraphStore(GraphStore):
         return node
 
     def upsert_ioc(self, ioc: IOC) -> Node:
-        return self._merge_node(Node(id=ioc_node_id(ioc), kind="ioc", label=ioc.value))
+        return self.upsert_node(Node(id=ioc_node_id(ioc), kind="ioc", label=ioc.value))
 
     def upsert_actor(self, actor: Actor) -> Node:
-        return self._merge_node(
+        return self.upsert_node(
             Node(id=actor_node_id(actor.name), kind="actor", label=actor.name)
         )
 
     def upsert_campaign(self, campaign: Campaign) -> Node:
-        return self._merge_node(
+        return self.upsert_node(
             Node(id=campaign_node_id(campaign.name), kind="campaign", label=campaign.name)
         )
 

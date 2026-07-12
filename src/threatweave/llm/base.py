@@ -1,19 +1,17 @@
 """The ``LLMProvider`` interface and its data contracts.
 
-This module defines the *shape* of the AI enrichment layer without wiring in any
-provider. Concrete implementations (API-based or self-hosted) arrive in later
-phases; until then the methods raise :class:`NotImplementedError` so nothing
-accidentally calls out to a model.
+This module defines the *shape* of the AI enrichment layer. The interface is
+deliberately narrow — exactly the three operations where AI adds value at
+ingestion time:
 
-The interface is deliberately narrow — exactly the three operations where AI adds
-value at ingestion time:
-
-* :meth:`LLMProvider.extract`  — pull IOCs/TTPs out of unstructured prose.
+* :meth:`LLMProvider.extract`  — pull TTPs, actor and target context out of prose.
 * :meth:`LLMProvider.embed`    — produce vector embeddings for semantic search.
 * :meth:`LLMProvider.narrate`  — write an on-demand explanatory summary.
 
 Correlation is **not** here by design: relating indicators is graph logic, not a
-model call.
+model call. Obvious IOCs are **not** extracted here either — the deterministic
+regex parser handles them, and the hybrid ingestion pipeline merges both. Keeping
+IOCs out of the LLM schema avoids spending tokens on what regex already resolves.
 """
 
 from __future__ import annotations
@@ -21,37 +19,49 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from threatweave.models.ioc import IOC
+
+class TTP(BaseModel):
+    """A tactic, technique or procedure mapped to MITRE ATT&CK.
+
+    ``technique_id`` is the canonical ATT&CK id (e.g. ``T1566`` or a
+    sub-technique ``T1566.001``); ``name`` and ``tactic`` are optional context.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    technique_id: str
+    name: str | None = None
+    tactic: str | None = None
 
 
 class ExtractionResult(BaseModel):
     """Structured output of :meth:`LLMProvider.extract`.
 
-    Holds the indicators recovered from free text plus any TTP references (e.g.
-    MITRE ATT&CK technique ids). Extraction only *identifies* entities; it never
-    asserts relationships between them.
+    Holds only what the LLM is responsible for: TTPs, the attributed actor and
+    the targeted sectors. Indicators are intentionally absent — they come from
+    the regex parser in the ingestion pipeline.
     """
 
-    iocs: list[IOC] = Field(default_factory=list)
-    ttps: list[str] = Field(default_factory=list)
+    ttps: list[TTP] = Field(default_factory=list)
+    actor: str | None = None
+    target_sectors: list[str] = Field(default_factory=list)
 
 
 class LLMProvider(ABC):
     """Abstract, swappable interface to an AI backend.
 
-    Concrete subclasses will be selected at runtime from configuration (see
-    ``LLMSettings.provider``). All methods are currently unimplemented.
+    Concrete subclasses are selected at runtime from configuration (see
+    ``LLMSettings.provider``).
     """
 
     @abstractmethod
     def extract(self, text: str) -> ExtractionResult:
-        """Extract IOCs and TTPs from unstructured ``text``.
+        """Extract TTPs, actor and target sectors from unstructured ``text``.
 
-        Reserved for the AI extraction phase. Complements the deterministic
-        regex parser by recovering indicators that patterns cannot, such as TTPs
-        described in prose.
+        Complements the deterministic regex parser by recovering context that
+        patterns cannot. It does **not** return IOCs.
         """
         raise NotImplementedError
 
