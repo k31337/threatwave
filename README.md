@@ -25,10 +25,16 @@ the deterministic regex parser at zero token cost. The LLM is used *only* for
 what regex cannot recover — TTPs (mapped to MITRE ATT&CK), the attributed actor
 and targeted sectors — so the two never duplicate work.
 
+**Semantic similarity is additive.** Embeddings (computed once per campaign at
+ingestion, cached in pgvector) let the graph relate campaigns that read alike but
+share no exact IOC. This *augments* the exact-match structural correlation with
+scored `semantic_similarity` edges — it never replaces it, and the AI still only
+touches each datum once, at ingestion.
+
 ## Stack
 
 - Python 3.11+, FastAPI
-- Neo4j (graph), PostgreSQL + pgvector (embeddings, reserved)
+- Neo4j (graph), PostgreSQL + pgvector (embeddings)
 - Docker Compose for local infrastructure
 - Deterministic IOC extraction via regex/parsers (no AI)
 - pytest, ruff, full type hints
@@ -42,8 +48,9 @@ src/threatweave/
 ├── parsers/             # deterministic regex IOC parser (+ refanging)
 ├── connectors/          # ingestion sources: AlienVault OTX + free-text/URL documents
 ├── graph/               # GraphStore port + Neo4j and in-memory adapters + factory
-├── correlation/         # correlate(): deterministic graph traversal
-├── ingest.py            # OTX payload / extracted document -> graph
+├── vector/              # VectorStore port + pgvector and in-memory adapters + factory
+├── correlation/         # correlate() (structural + semantic) and similar()
+├── ingest.py            # OTX payload / extracted document -> graph (+ cached embeddings)
 ├── llm/                 # LLMProvider interface + OpenAI provider, Ollama stub, cost, factory
 ├── cli.py               # `threatweave` CLI (ingest-doc)
 └── api/                 # FastAPI app and routes
@@ -51,7 +58,8 @@ src/threatweave/
 
 The graph models five node kinds — `IOC`, `Actor`, `Campaign`, `TTP`, `Sector` —
 linked by deterministic relationships (`PART_OF`, `ATTRIBUTED_TO`, `RESOLVES_TO`,
-`USES`, `TARGETS`).
+`USES`, `TARGETS`), plus a weighted `SEMANTIC_SIMILARITY` edge (carrying a cosine
+score) added at query time from campaign embeddings.
 
 ## Configuration
 
@@ -66,8 +74,10 @@ Key variables: `NEO4J_*`, `POSTGRES_*`, `OTX_API_KEY`, `API_*`,
 `GRAPH_BACKEND` (`neo4j` | `memory`) and `SEED_SAMPLE`. For document ingestion,
 set the LLM provider: `LLM_PROVIDER=openai`, `LLM_API_KEY=<key>`,
 `LLM_MODEL=gpt-4o-mini` (plus optional `LLM_MAX_INPUT_CHARS`,
-`LLM_MAX_OUTPUT_TOKENS`, `LLM_MAX_RETRIES`). See [.env.example](.env.example) for
-the full list.
+`LLM_MAX_OUTPUT_TOKENS`, `LLM_MAX_RETRIES`). For semantic similarity, enable a
+vector backend: `VECTOR_BACKEND=pgvector` (or `memory`), with
+`LLM_EMBED_MODEL=text-embedding-3-small` and `LLM_EMBED_DIM=1536`. See
+[.env.example](.env.example) for the full list.
 
 ## Install (development)
 
@@ -115,10 +125,18 @@ the running Neo4j (requires a valid `OTX_API_KEY`).
 |--------|-------------------|--------------------------------------------------------|
 | GET    | `/health`         | Liveness probe.                                        |
 | GET    | `/api/correlate`  | Correlation subgraph for an indicator.                 |
+| GET    | `/api/similar`    | Semantic nearest neighbours of an entity.              |
 
 `GET /api/correlate?ioc=<value>&depth=<1..4>` — the indicator type is inferred
 from the value (IP, domain, hash or URL). Returns `404` if the indicator is not
 in the graph. The response is a `{ "nodes": [...], "edges": [...] }` subgraph.
+Add `&semantic=true` (with a vector backend configured) to also include scored
+`semantic_similarity` edges (tunable via `&k=` and `&min_score=`).
+
+`GET /api/similar?id=<entity_id>&k=<n>` — returns the `k` most semantically
+similar entities as `[{ "id", "label", "score" }]`, e.g.
+`id=campaign:<name>`. Responds `503` if no vector backend is configured, or
+`404` if the entity has no stored embedding.
 
 ## Ingesting documents (CLI)
 
@@ -140,10 +158,11 @@ through `/api/correlate`.
 
 ## Testing
 
-The full suite runs offline — no Neo4j, Docker, network or API keys required.
-Correlation runs against the in-memory store, the OTX connector against a mocked
-transport, and the LLM provider is fully mocked (fixed responses), so extraction
-and document ingestion are tested without any real API calls:
+The full suite runs offline — no Neo4j, pgvector, Docker, network or API keys
+required. Correlation and similarity run against in-memory stores, the OTX
+connector against a mocked transport, and the LLM provider is fully mocked (fixed
+extractions and deterministic embeddings), so extraction, embeddings and document
+ingestion are tested without any real API calls:
 
 ```bash
 pytest          # run tests
@@ -168,5 +187,9 @@ ruff check .    # lint
   target sectors via a swappable `OpenAIProvider` (Ollama stub reserved), with
   token-cost logging and structured-output validation. Extraction inserts
   `Campaign`/`Actor`/`TTP`/`Sector` nodes and their edges.
-- [ ] Phase 3 — Embeddings + pgvector semantic correlation (`embed`).
+- [x] **Phase 3 — Semantic similarity**: per-campaign embeddings (`embed`),
+  computed once at ingestion and cached in a `VectorStore` (pgvector, with an
+  in-memory test backend). Adds `similar(entity, k)`, scored
+  `semantic_similarity` edges in `correlate()`, and a `GET /api/similar`
+  endpoint — relating campaigns that share no exact IOC.
 - [ ] Phase 4 — On-demand explanatory narratives (`narrate`).
