@@ -1,10 +1,41 @@
-# ThreatWeave
+<p align="center">
+  <img src="assets/logo.svg" alt="ThreatWeave — threat intelligence knowledge graph" width="540">
+</p>
 
-A threat intelligence knowledge graph. ThreatWeave ingests IOCs (IPs, hashes,
-domains, URLs) and cybersecurity reports from multiple sources, normalizes them,
-and correlates them in a knowledge graph. Its differentiator over a plain feed
-aggregator is finding relationships that exact matching misses — via semantic
-similarity with embeddings (a later phase).
+<p align="center">
+  <em>Deterministic threat intelligence correlation. AI only where it earns its cost.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Neo4j-graph-018BFF?logo=neo4j&logoColor=white" alt="Neo4j">
+  <img src="https://img.shields.io/badge/pgvector-embeddings-336791?logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
+</p>
+
+---
+
+ThreatWeave ingests IOCs (IPs, hashes, domains, URLs) and cybersecurity reports
+from multiple sources, normalizes them, and correlates them in a knowledge
+graph. Its differentiator over a plain feed aggregator is finding relationships
+that exact matching misses — via semantic similarity with embeddings — and
+explaining them on demand in natural language.
+
+## Table of contents
+
+- [Architecture principle](#architecture-principle)
+- [Stack](#stack)
+- [Project layout](#project-layout)
+- [Configuration](#configuration)
+- [Install (development)](#install-development)
+- [Running](#running)
+- [API](#api)
+- [Ingesting documents (CLI)](#ingesting-documents-cli)
+- [Testing](#testing)
+- [Data & security](#data--security)
+- [Roadmap](#roadmap)
 
 ## Architecture principle
 
