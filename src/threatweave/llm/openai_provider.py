@@ -18,6 +18,8 @@ from pydantic import BaseModel
 
 from threatweave.llm.base import TTP, ExtractionResult, LLMProvider
 from threatweave.llm.cost import Usage, log_usage
+from threatweave.llm.narrative import build_messages, finalize_narrative
+from threatweave.models.graph import Subgraph
 from threatweave.models.normalize import normalize_technique_id
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,7 @@ class OpenAIProvider(LLMProvider):
         max_output_tokens: int = 1_024,
         max_retries: int = 2,
         embed_model: str = "text-embedding-3-small",
+        narrative_model: str = "gpt-5.4-mini",
     ) -> None:
         """Create the provider.
 
@@ -73,9 +76,11 @@ class OpenAIProvider(LLMProvider):
             max_output_tokens: Cap on completion tokens per call.
             max_retries: Transient-error retries handled by the SDK client.
             embed_model: Model used by :meth:`embed`.
+            narrative_model: Higher-quality model used by :meth:`narrate`.
         """
         self._model = model
         self._embed_model = embed_model
+        self._narrative_model = narrative_model
         self._max_output_tokens = max_output_tokens
         self._client = client or OpenAI(api_key=api_key, max_retries=max_retries)
 
@@ -144,5 +149,25 @@ class OpenAIProvider(LLMProvider):
         ordered = sorted(response.data, key=lambda item: item.index)
         return [list(item.embedding) for item in ordered]
 
-    def narrate(self, subgraph: object) -> str:
-        raise NotImplementedError("narratives arrive in a later phase")
+    def narrate(self, subgraph: Subgraph) -> str:
+        """Write a narrative explaining a correlated subgraph.
+
+        Uses the higher-quality narrative model. The model sees only the
+        subgraph evidence, and a verification disclaimer is appended by code.
+        """
+        completion = self._client.chat.completions.create(
+            model=self._narrative_model,
+            messages=build_messages(subgraph),
+            max_tokens=self._max_output_tokens,
+            temperature=0.2,
+        )
+
+        usage = getattr(completion, "usage", None)
+        if usage is not None:
+            log_usage(
+                self._narrative_model,
+                Usage(usage.prompt_tokens, usage.completion_tokens),
+            )
+
+        text = completion.choices[0].message.content or ""
+        return finalize_narrative(text)

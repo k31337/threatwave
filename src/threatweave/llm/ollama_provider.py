@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from threatweave.llm.base import ExtractionResult, LLMProvider
+from threatweave.models.graph import Subgraph
 
 
 class OllamaProvider(LLMProvider):
@@ -25,5 +26,5 @@ class OllamaProvider(LLMProvider):
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         raise NotImplementedError("Ollama provider is not implemented yet")
 
-    def narrate(self, subgraph: object) -> str:
+    def narrate(self, subgraph: Subgraph) -> str:
         raise NotImplementedError("Ollama provider is not implemented yet")

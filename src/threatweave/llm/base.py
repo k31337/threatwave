@@ -21,6 +21,8 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from threatweave.models.graph import Subgraph
+
 
 class TTP(BaseModel):
     """A tactic, technique or procedure mapped to MITRE ATT&CK.
@@ -75,12 +77,11 @@ class LLMProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def narrate(self, subgraph: object) -> str:
+    def narrate(self, subgraph: Subgraph) -> str:
         """Write a human-readable narrative explaining a correlation result.
 
-        Reserved for the narratives phase. Takes a correlation ``Subgraph`` and
-        produces an on-demand textual summary. Typed as ``object`` here to avoid
-        a premature dependency direction; the concrete implementation will accept
-        ``threatweave.models.graph.Subgraph``.
+        Takes an already-computed correlation ``Subgraph`` and produces an
+        on-demand textual summary grounded solely in that evidence. Called only
+        from the narrative endpoint, so cost scales with use, not data volume.
         """
         raise NotImplementedError

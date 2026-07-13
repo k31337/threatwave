@@ -77,13 +77,6 @@ def test_embed_empty_input_short_circuits() -> None:
     assert provider.embed([]) == []
 
 
-def test_narrate_not_implemented() -> None:
-    client, _ = _make_client(_LLMExtraction(ttps=[], actor=None, target_sectors=[]))
-    provider = OpenAIProvider(client=client)
-    with pytest.raises(NotImplementedError):
-        provider.narrate(object())
-
-
 def test_cost_estimation_known_and_unknown() -> None:
     # 1M input tokens at $0.15/Mtok == $0.15; unknown model -> None (tolerant).
     assert estimate_cost("gpt-4o-mini", Usage(1_000_000, 0)) == pytest.approx(0.15)

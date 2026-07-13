@@ -25,6 +25,7 @@ def get_provider(settings: Settings) -> LLMProvider:
             max_output_tokens=settings.llm.max_output_tokens,
             max_retries=settings.llm.max_retries,
             embed_model=settings.llm.embed_model,
+            narrative_model=settings.llm.narrative_model,
         )
 
     if provider == "ollama":

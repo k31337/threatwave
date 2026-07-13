@@ -77,6 +77,10 @@ class LLMSettings(BaseSettings):
     embed_model: str = "text-embedding-3-small"
     embed_dim: int = 1_536
 
+    # On-demand narrative generation uses a higher-quality model than extraction.
+    # Configurable so quality/cost can be tuned without code changes.
+    narrative_model: str = "gpt-5.4-mini"
+
 
 class Settings(BaseSettings):
     """Top-level application settings, aggregating each subsystem's config."""
