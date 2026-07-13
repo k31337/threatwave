@@ -13,10 +13,27 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _section_config(env_prefix: str) -> SettingsConfigDict:
+    """Shared config for per-subsystem settings sections.
+
+    Each section reads the ``.env`` file itself (not only the process
+    environment): sections are standalone ``BaseSettings`` built via
+    ``default_factory``, so they do NOT inherit the parent's ``env_file`` —
+    without this, values placed in ``.env`` but not exported would be silently
+    ignored. ``extra="ignore"`` skips the file's unrelated keys.
+    """
+    return SettingsConfigDict(
+        env_prefix=env_prefix,
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
 class Neo4jSettings(BaseSettings):
     """Connection settings for the Neo4j graph store."""
 
-    model_config = SettingsConfigDict(env_prefix="NEO4J_")
+    model_config = _section_config("NEO4J_")
 
     uri: str = "bolt://localhost:7687"
     user: str = "neo4j"
@@ -29,7 +46,7 @@ class PostgresSettings(BaseSettings):
     Reserved for the embeddings phase; the graph flow does not use it yet.
     """
 
-    model_config = SettingsConfigDict(env_prefix="POSTGRES_")
+    model_config = _section_config("POSTGRES_")
 
     host: str = "localhost"
     port: int = 5432
@@ -49,7 +66,7 @@ class PostgresSettings(BaseSettings):
 class OTXSettings(BaseSettings):
     """Settings for the AlienVault OTX ingestion connector."""
 
-    model_config = SettingsConfigDict(env_prefix="OTX_")
+    model_config = _section_config("OTX_")
 
     api_key: str = ""
     base_url: str = "https://otx.alienvault.com/api/v1"
@@ -62,7 +79,7 @@ class LLMSettings(BaseSettings):
     defaults to ``"none"`` so nothing attempts to call an external model.
     """
 
-    model_config = SettingsConfigDict(env_prefix="LLM_")
+    model_config = _section_config("LLM_")
 
     provider: str = "none"
     api_key: str = ""
