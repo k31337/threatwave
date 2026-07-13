@@ -12,6 +12,7 @@ import pytest
 
 from threatweave.graph.memory import InMemoryGraphStore
 from threatweave.llm.base import TTP, ExtractionResult, LLMProvider
+from threatweave.models.graph import Subgraph
 
 _SAMPLES = Path(__file__).resolve().parents[1] / "data" / "samples"
 
@@ -24,16 +25,21 @@ class FakeProvider(LLMProvider):
     stable hash-derived vector. Call counters make caching observable.
     """
 
+    narrative_model = "fake-narrative-model"
+
     def __init__(
         self,
         result: ExtractionResult | None = None,
         *,
         embeddings: dict[str, list[float]] | None = None,
+        narrative: str = "Fixed narrative.",
     ) -> None:
         self.result = result or ExtractionResult()
         self.calls: list[str] = []
         self.embed_calls = 0
         self._embeddings = embeddings or {}
+        self._narrative = narrative
+        self.narrated: list[Subgraph] = []
 
     def extract(self, text: str) -> ExtractionResult:
         self.calls.append(text)
@@ -48,8 +54,9 @@ class FakeProvider(LLMProvider):
         digest = hashlib.sha256(text.encode("utf-8")).digest()
         return [byte / 255 for byte in digest[:8]]
 
-    def narrate(self, subgraph: object) -> str:
-        raise NotImplementedError
+    def narrate(self, subgraph: Subgraph) -> str:
+        self.narrated.append(subgraph)
+        return self._narrative
 
 
 @pytest.fixture
