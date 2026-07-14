@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 import pytest
 
 from tests.conftest import FakeProvider
-from threatweave.cli import build_parser, run_ingest_doc
+from threatweave.cli import build_parser, run_demo, run_ingest_doc
 from threatweave.graph.memory import InMemoryGraphStore
 
 
@@ -47,3 +48,36 @@ def test_run_ingest_doc_from_file(
 
     assert store.get_node("ioc:ipv4:8.8.8.8") is not None
     assert store.get_node("actor:APT-Sample") is not None
+
+
+def test_parser_wires_demo_defaults() -> None:
+    args = build_parser().parse_args(["demo"])
+    assert args.func is run_demo
+    assert args.host == "127.0.0.1"
+    assert args.port == 8000
+    assert args.reload is False
+
+
+def test_run_demo_forces_memory_backend_and_serves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("SEED_SAMPLE", raising=False)
+    captured: dict[str, object] = {}
+
+    def fake_run(app: str, **kwargs: object) -> None:
+        # Env must already be set to the seeded in-memory backend at serve time.
+        captured["app"] = app
+        captured["graph_backend"] = os.environ["GRAPH_BACKEND"]
+        captured["seed_sample"] = os.environ["SEED_SAMPLE"]
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr("uvicorn.run", fake_run)
+
+    args = argparse.Namespace(host="127.0.0.1", port=9001, reload=False)
+    run_demo(args)
+
+    assert captured["app"] == "threatweave.api.app:app"
+    assert captured["graph_backend"] == "memory"
+    assert captured["seed_sample"] == "true"
+    assert captured["kwargs"] == {"host": "127.0.0.1", "port": 9001, "reload": False}

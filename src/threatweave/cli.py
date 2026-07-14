@@ -1,17 +1,19 @@
 """Command-line interface for ThreatWeave.
 
-Currently exposes ``ingest-doc``, which ingests a threat report (from a URL, a
-file or inline text) into the graph using hybrid extraction.
+Exposes ``ingest-doc`` (hybrid extraction of a threat report into the graph) and
+``demo`` (launch the API against the in-memory sample graph, no keys required).
 
     threatweave ingest-doc --url https://example.com/report
     threatweave ingest-doc --file report.txt
     threatweave ingest-doc --text "APT-Sample phishing campaign ..."
+    threatweave demo
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 from threatweave.config import get_settings
@@ -82,6 +84,31 @@ def run_ingest_doc(
     )
 
 
+def run_demo(args: argparse.Namespace) -> None:
+    """Execute the ``demo`` command: serve the API on the seeded in-memory graph.
+
+    Forces ``GRAPH_BACKEND=memory`` and ``SEED_SAMPLE=true`` so the API starts
+    from the synthetic sample with no database and no API keys — the one-command
+    way to try the frontend end to end. Child processes spawned by ``--reload``
+    inherit these environment variables.
+    """
+    os.environ["GRAPH_BACKEND"] = "memory"
+    os.environ["SEED_SAMPLE"] = "true"
+    get_settings.cache_clear()  # drop any Settings cached before we set the env
+
+    import uvicorn
+
+    logger.info(
+        "starting ThreatWeave demo on http://%s:%d "
+        "(in-memory graph seeded from data/samples; try ioc=malicious.example)",
+        args.host,
+        args.port,
+    )
+    uvicorn.run(
+        "threatweave.api.app:app", host=args.host, port=args.port, reload=args.reload
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser."""
     parser = argparse.ArgumentParser(prog="threatweave")
@@ -95,6 +122,17 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--file", help="Path to a local report file.")
     source.add_argument("--text", help="Inline report text.")
     ingest_doc.set_defaults(func=run_ingest_doc)
+
+    demo = subcommands.add_parser(
+        "demo",
+        help="Serve the API on the seeded in-memory sample graph (no keys needed).",
+    )
+    demo.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1).")
+    demo.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000).")
+    demo.add_argument(
+        "--reload", action="store_true", help="Enable auto-reload for development."
+    )
+    demo.set_defaults(func=run_demo)
 
     return parser
 

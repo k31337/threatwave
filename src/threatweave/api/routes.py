@@ -83,6 +83,28 @@ def get_correlate(
     return subgraph
 
 
+@router.get("/api/expand", response_model=Subgraph, dependencies=_api_deps)
+@limiter.limit(rate_limit)
+def get_expand(
+    request: Request,
+    id: str = Query(..., description="Node id to expand, e.g. 'campaign:<name>'."),
+    depth: int = Query(1, ge=1, le=4, description="Relationship hops to include."),
+) -> Subgraph:
+    """Return the neighbourhood subgraph around an arbitrary node.
+
+    This powers graph exploration in the UI: unlike ``/api/correlate`` (which
+    resolves a raw IOC *value*), ``expand`` takes any node id — IOC, campaign,
+    actor, TTP or sector — and returns its neighbourhood. It is purely
+    deterministic graph traversal (``GraphStore.neighborhood``), identical across
+    the memory and Neo4j backends; no AI is involved. Responds 404 when the node
+    is not in the graph.
+    """
+    store = _store(request)
+    if store.get_node(id) is None:
+        raise HTTPException(status_code=404, detail=f"node not found: {id}")
+    return store.neighborhood(id, depth=depth)
+
+
 @router.get("/api/similar", response_model=list[SimilarNeighbor], dependencies=_api_deps)
 @limiter.limit(rate_limit)
 def get_similar(
