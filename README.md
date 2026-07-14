@@ -31,6 +31,8 @@ explaining them on demand in natural language.
 - [Configuration](#configuration)
 - [Install (development)](#install-development)
 - [Running](#running)
+- [Web UI (interactive graph)](#web-ui-interactive-graph)
+- [Try it locally](#try-it-locally)
 - [API](#api)
 - [Ingesting documents (CLI)](#ingesting-documents-cli)
 - [Testing](#testing)
@@ -79,6 +81,7 @@ and requires analyst verification.
 
 - Python 3.11+, FastAPI
 - Neo4j (graph), PostgreSQL + pgvector (embeddings)
+- React + Vite + TypeScript frontend with a Cytoscape.js graph view
 - Docker Compose for local infrastructure
 - Deterministic IOC extraction via regex/parsers (no AI)
 - pytest, ruff, full type hints
@@ -96,8 +99,14 @@ src/threatweave/
 ├── correlation/         # correlate() (structural + semantic) and similar()
 ├── ingest.py            # OTX payload / extracted document -> graph (+ cached embeddings)
 ├── llm/                 # LLMProvider interface + OpenAI provider, Ollama stub, cost, narrative, factory
-├── cli.py               # `threatweave` CLI (ingest-doc)
-└── api/                 # FastAPI app and routes
+├── cli.py               # `threatweave` CLI (ingest-doc, demo)
+└── api/                 # FastAPI app, routes and API-key/rate-limit gating (security.py)
+
+frontend/                # React + Vite single-page graph explorer
+├── src/api/             # typed API client + error mapping
+├── src/graph/           # Cytoscape styling + subgraph merge for expansion
+├── src/hooks/           # useGraph (search/expand) and useNarrative (on-demand)
+└── src/components/      # SearchBar, GraphView, NodeDetailPanel, NarrativePanel, StatusBanner
 ```
 
 The graph models five node kinds — `IOC`, `Actor`, `Campaign`, `TTP`, `Sector` —
@@ -115,7 +124,15 @@ cp .env.example .env
 ```
 
 Key variables: `NEO4J_*`, `POSTGRES_*`, `OTX_API_KEY`, `API_*`,
-`GRAPH_BACKEND` (`neo4j` | `memory`) and `SEED_SAMPLE`. For document ingestion,
+`GRAPH_BACKEND` (`neo4j` | `memory`) and `SEED_SAMPLE`.
+
+**API gating and rate limiting.** The `/api/*` routes accept an optional
+`X-API-Key` header, enabled only when `API_KEY` is set (unset — the demo — leaves
+the API open, so it starts with no keys). Treat this key as **casual gating, not
+a secret**: the frontend ships it in its bundle (`VITE_API_KEY`), so it is
+readable by anyone loading the page. The real protection for a public deployment
+is the per-client rate limit (`API_RATE_LIMIT`, e.g. `60/minute`), which returns
+`429` when exceeded. `/health` is always open. For document ingestion,
 set the LLM provider: `LLM_PROVIDER=openai`, `LLM_API_KEY=<key>`,
 `LLM_MODEL=gpt-4o-mini` (plus optional `LLM_MAX_INPUT_CHARS`,
 `LLM_MAX_OUTPUT_TOKENS`, `LLM_MAX_RETRIES`). For semantic similarity, enable a
@@ -165,12 +182,48 @@ pgvector-enabled Postgres (reserved for the embeddings phase), and the API on
 `http://localhost:8000`. Populate the graph from OTX by running an ingest against
 the running Neo4j (requires a valid `OTX_API_KEY`).
 
+## Web UI (interactive graph)
+
+The `frontend/` app is a React + Vite single-page explorer over the API. Search
+an IOC to build its correlation subgraph, **click** a node to inspect it in the
+side panel, and **double-click** to expand its relationships outward. Campaign
+nodes can list their semantic neighbours; IOC nodes can request an on-demand AI
+narrative — both degrade gracefully when the corresponding backend is disabled
+(as in the no-keys demo). Node colours encode the entity kind, and AI-derived
+`semantic_similarity` edges are drawn dashed and carry their cosine score, so
+they never blend in with the deterministic structural edges.
+
+## Try it locally
+
+The fastest path — no database, no API keys — is the seeded in-memory demo, which
+also serves the built frontend from the same origin:
+
+```bash
+# 1. Build the frontend (served by the API from frontend/dist when present)
+cd frontend && npm install && npm run build && cd ..
+
+# 2. Launch the API on the seeded in-memory sample graph
+threatweave demo            # http://127.0.0.1:8000  (add --reload for dev)
+```
+
+Open http://127.0.0.1:8000 and search `malicious.example` or `203.0.113.10`.
+
+For frontend development with hot-reload, run the API and the Vite dev server
+side by side (Vite proxies `/api` to the API, so the app is same-origin in both
+dev and production):
+
+```bash
+threatweave demo                 # terminal 1: API on :8000
+cd frontend && npm run dev       # terminal 2: Vite on :5173
+```
+
 ## API
 
 | Method | Path              | Description                                            |
 |--------|-------------------|--------------------------------------------------------|
-| GET    | `/health`         | Liveness probe.                                        |
+| GET    | `/health`         | Liveness probe (unauthenticated).                     |
 | GET    | `/api/correlate`  | Correlation subgraph for an indicator.                 |
+| GET    | `/api/expand`     | Neighbourhood subgraph around any node id.             |
 | GET    | `/api/similar`    | Semantic nearest neighbours of an entity.              |
 | GET    | `/api/narrative`  | On-demand natural-language explanation for an indicator.|
 
@@ -179,6 +232,13 @@ from the value (IP, domain, hash or URL). Returns `404` if the indicator is not
 in the graph. The response is a `{ "nodes": [...], "edges": [...] }` subgraph.
 Add `&semantic=true` (with a vector backend configured) to also include scored
 `semantic_similarity` edges (tunable via `&k=` and `&min_score=`).
+
+`GET /api/expand?id=<node_id>&depth=<1..4>` — returns the neighbourhood subgraph
+around **any** node (IOC, campaign, actor, TTP or sector), not just a raw
+indicator value. This backs interactive exploration in the web UI: click to
+select, expand to grow the graph outward. It is pure deterministic traversal
+(`GraphStore.neighborhood`), identical across the memory and Neo4j backends — no
+AI. Responds `404` when the node id is not in the graph.
 
 `GET /api/similar?id=<entity_id>&k=<n>` — returns the `k` most semantically
 similar entities as `[{ "id", "label", "score" }]`, e.g.
@@ -251,3 +311,10 @@ ruff check .    # lint
   (`LLM_NARRATIVE_MODEL`), grounded solely in the subgraph evidence and stamped
   with a verification disclaimer. Exposed at `GET /api/narrative` — generated
   only on request, so cost scales with use, not data volume.
+- [x] **Phase 5 — Frontend & hardening**: a React + Vite single-page explorer
+  with a Cytoscape.js graph view (search, click-to-inspect, double-click to
+  expand via the new deterministic `GET /api/expand`), a node detail panel with
+  on-demand narratives, and loading/error states. Ships casual `X-API-Key`
+  gating plus per-client rate limiting on the API, and a one-command
+  keyless demo (`threatweave demo`, in-memory seeded graph) that also serves the
+  built frontend.
