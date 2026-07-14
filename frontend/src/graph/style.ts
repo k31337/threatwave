@@ -7,7 +7,7 @@
 import type cytoscape from "cytoscape";
 import type { GraphEdge, GraphNode, NodeKind, Subgraph } from "../api/types";
 
-const KIND_COLOR: Record<NodeKind, string> = {
+export const KIND_COLOR: Record<NodeKind, string> = {
   ioc: "#4f9cff",
   campaign: "#f0883e",
   actor: "#e5534b",

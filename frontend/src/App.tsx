@@ -1,13 +1,16 @@
-// Application shell wiring search + interactive graph. The node detail panel and
-// on-demand narrative are layered on in the next commit.
+// Application shell: search + interactive graph + selected-node detail panel,
+// with graph-level loading/error surfaced by a floating status banner.
 
 import { GraphView } from "./components/GraphView";
+import { NodeDetailPanel } from "./components/NodeDetailPanel";
 import { SearchBar } from "./components/SearchBar";
+import { StatusBanner } from "./components/StatusBanner";
 import { useGraph } from "./hooks/useGraph";
 
 export function App() {
   const { graph, selectedId, loading, error, search, expandNode, select } = useGraph();
   const hasGraph = graph.nodes.length > 0;
+  const selectedNode = graph.nodes.find((node) => node.id === selectedId) ?? null;
 
   return (
     <div className="app">
@@ -19,24 +22,29 @@ export function App() {
         <SearchBar onSearch={search} loading={loading} />
       </header>
 
-      {error && <div className="app__error">{error}</div>}
-
       <main className="app__main">
-        {hasGraph ? (
-          <GraphView
-            graph={graph}
-            selectedId={selectedId}
-            onSelect={select}
-            onExpand={expandNode}
-          />
-        ) : (
-          <div className="app__empty">
-            <p>Search an indicator to build its correlation graph.</p>
-            <p className="app__hint">
-              Try <code>malicious.example</code> or <code>203.0.113.10</code>. Click a
-              node to select it, double-click to expand its relationships.
-            </p>
-          </div>
+        <div className="app__graph">
+          {hasGraph ? (
+            <GraphView
+              graph={graph}
+              selectedId={selectedId}
+              onSelect={select}
+              onExpand={expandNode}
+            />
+          ) : (
+            <div className="app__empty">
+              <p>Search an indicator to build its correlation graph.</p>
+              <p className="app__hint">
+                Try <code>malicious.example</code> or <code>203.0.113.10</code>. Click a
+                node to select it, double-click to expand its relationships.
+              </p>
+            </div>
+          )}
+          <StatusBanner loading={loading} error={error} />
+        </div>
+
+        {selectedNode && (
+          <NodeDetailPanel node={selectedNode} onClose={() => select(null)} />
         )}
       </main>
     </div>

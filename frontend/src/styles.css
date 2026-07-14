@@ -56,16 +56,15 @@ body {
 
 .app__main {
   flex: 1;
-  position: relative;
+  display: flex;
+  min-height: 0;
   overflow: hidden;
 }
 
-.app__error {
-  padding: 0.6rem 1.25rem;
-  background: #3a1d1d;
-  color: #ffb4ab;
-  font-size: 0.85rem;
-  border-bottom: 1px solid #5a2a2a;
+.app__graph {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
 }
 
 .app__empty {
@@ -128,4 +127,163 @@ body {
 .graphview {
   width: 100%;
   height: 100%;
+}
+
+/* --- Status banner (floating over the graph) --- */
+.status {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  max-width: 80%;
+  z-index: 10;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.status--loading {
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.status--error {
+  background: #3a1d1d;
+  color: #ffb4ab;
+  border: 1px solid #5a2a2a;
+}
+
+/* --- Node detail panel --- */
+.detail {
+  width: 22rem;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+}
+
+.detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail__badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #06101f;
+}
+
+.detail__close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detail__label {
+  margin: 0.8rem 0 0.2rem;
+  font-size: 1.05rem;
+  word-break: break-all;
+}
+
+.detail__id {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.detail__section {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.detail__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.detail__section-title {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.detail__action {
+  padding: 0.35rem 0.8rem;
+  background: var(--accent);
+  color: #06101f;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.detail__action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.detail__narrative {
+  margin: 0.8rem 0 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.detail__meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.detail__hint {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.detail__hint--muted {
+  margin-top: 1.5rem;
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
+.detail__error {
+  font-size: 0.82rem;
+  color: #ffb4ab;
+}
+
+.detail__list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+}
+
+.detail__list-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.83rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail__score {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }

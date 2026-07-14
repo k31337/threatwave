@@ -4,29 +4,12 @@
 // logic — no AI is involved in building or growing the graph.
 
 import { useCallback, useState } from "react";
-import { ApiError, correlate, expand } from "../api/client";
+import { correlate, expand } from "../api/client";
+import { describeError } from "../api/errors";
 import type { Subgraph } from "../api/types";
 import { mergeSubgraphs } from "../graph/merge";
 
 const EMPTY: Subgraph = { nodes: [], edges: [] };
-
-function messageFor(error: unknown, notFound: string): string {
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 404:
-        return notFound;
-      case 429:
-        return "Rate limit reached — please slow down and retry shortly.";
-      case 401:
-        return "The API rejected the request (missing or invalid API key).";
-      case 0:
-        return error.message;
-      default:
-        return error.message;
-    }
-  }
-  return "Unexpected error.";
-}
 
 export interface UseGraph {
   graph: Subgraph;
@@ -56,7 +39,11 @@ export function useGraph(): UseGraph {
       setSelectedId(null);
     } catch (err) {
       setGraph(EMPTY);
-      setError(messageFor(err, `No indicator matching "${value}" is in the graph.`));
+      setError(
+        describeError(err, {
+          notFound: `No indicator matching "${value}" is in the graph.`,
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -69,7 +56,7 @@ export function useGraph(): UseGraph {
       const neighbourhood = await expand(id, 1);
       setGraph((current) => mergeSubgraphs(current, neighbourhood));
     } catch (err) {
-      setError(messageFor(err, "That node is no longer in the graph."));
+      setError(describeError(err, { notFound: "That node is no longer in the graph." }));
     } finally {
       setLoading(false);
     }
