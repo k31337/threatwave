@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -25,6 +26,9 @@ from threatweave.vector.factory import build_vector_store
 logger = logging.getLogger(__name__)
 
 _SAMPLE_PATH = Path("data/samples/otx_subscribed.json")
+# Built single-page frontend, served by the API when present (see `frontend/`).
+# Absent in dev (Vite serves it) and in CI; the API works fine without it.
+_FRONTEND_DIST = Path("frontend/dist")
 
 
 def _build_store(settings: Settings) -> GraphStore:
@@ -101,7 +105,23 @@ def create_app(
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     app.include_router(router)
+    _mount_frontend(app)
     return app
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    """Serve the built SPA at ``/`` when a production build is present.
+
+    Mounted *after* the API router so ``/health`` and ``/api/*`` keep priority;
+    the catch-all only handles the remaining paths. ``html=True`` serves
+    ``index.html`` for unknown paths, which is what a client-side-routed SPA
+    needs. When ``frontend/dist`` is absent (dev, tests, CI) this is a no-op.
+    """
+    if _FRONTEND_DIST.is_dir():
+        app.mount(
+            "/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend"
+        )
+        logger.info("serving frontend from %s", _FRONTEND_DIST)
 
 
 # Default application instance used by ``uvicorn threatweave.api.app:app``.
