@@ -77,6 +77,13 @@ class OTXSettings(BaseSettings):
     api_key: str = ""
     base_url: str = "https://otx.alienvault.com/api/v1"
 
+    # Include OTX when running `threatweave ingest --all`.
+    enabled: bool = False
+    # Opt-in embedding of pulse descriptions for semantic search. Off by default
+    # so scheduled OTX ingestion makes zero AI calls (the cost rule); on, it
+    # preserves semantic similarity over feed descriptions — the project's edge.
+    embed_descriptions: bool = False
+
 
 class AbuseChSettings(BaseSettings):
     """Settings for the abuse.ch ingestion connectors.
@@ -92,6 +99,9 @@ class AbuseChSettings(BaseSettings):
     urlhaus_base_url: str = "https://urlhaus.abuse.ch"
     malwarebazaar_base_url: str = "https://mb-api.abuse.ch/api/v1"
     feodo_base_url: str = "https://feodotracker.abuse.ch"
+
+    # Include the abuse.ch feeds when running `threatweave ingest --all`.
+    enabled: bool = False
 
 
 class LLMSettings(BaseSettings):
@@ -150,6 +160,13 @@ class Settings(BaseSettings):
     # Vector backend for semantic similarity. "none" (default) disables it;
     # "pgvector" uses Postgres; "memory" is an in-process store for tests/demos.
     vector_backend: str = Field(default="none", alias="VECTOR_BACKEND")
+
+    # Scheduled ingestion (`threatweave ingest`). The state file records the last
+    # run per source (also read by GET /api/ingest/status); the interval is the
+    # recommended cadence for a cron/Task Scheduler job (and the in-process
+    # scheduler, if used). The CLI itself runs once and exits — cron drives it.
+    ingest_state_path: str = Field(default="data/ingest_state.json", alias="INGEST_STATE_PATH")
+    ingest_interval_minutes: int = Field(default=60, alias="INGEST_INTERVAL_MINUTES")
 
     neo4j: Neo4jSettings = Field(default_factory=Neo4jSettings)
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)

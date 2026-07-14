@@ -113,7 +113,13 @@ class OTXConnector(Connector):
             self._client = httpx.Client(timeout=30.0)
         return self._client
 
-    def _fetch_payload(self) -> dict[str, Any]:
+    def fetch_payload(self) -> dict[str, Any]:
+        """Fetch the raw subscribed-pulses payload.
+
+        Exposed so the scheduled ingest path can build campaign structure (and
+        optionally embed pulse descriptions) from the full pulses, not just the
+        flattened indicators returned by :meth:`fetch_iocs`.
+        """
         response = self._http().get(
             f"{self._base_url}/pulses/subscribed",
             headers={"X-OTX-API-KEY": self._api_key},
@@ -124,7 +130,7 @@ class OTXConnector(Connector):
 
     def fetch_iocs(self) -> list[IOC]:
         """Fetch subscribed pulses and return their normalized IOCs."""
-        payload = self._fetch_payload()
+        payload = self.fetch_payload()
         return normalize_indicators(payload, source=self.name)
 
     def close(self) -> None:
