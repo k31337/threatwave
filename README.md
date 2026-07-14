@@ -34,6 +34,7 @@ explaining them on demand in natural language.
 - [Web UI (interactive graph)](#web-ui-interactive-graph)
 - [Try it locally](#try-it-locally)
 - [API](#api)
+- [Automated ingestion (feeds)](#automated-ingestion-feeds)
 - [Ingesting documents (CLI)](#ingesting-documents-cli)
 - [Testing](#testing)
 - [Data & security](#data--security)
@@ -73,6 +74,14 @@ is grounded solely in the already-computed subgraph (the model sees only that
 evidence), and every response is stamped with a disclaimer that it is indicative
 and requires analyst verification.
 
+**Structured feeds are AI-free.** Feed connectors (OTX, abuse.ch URLhaus /
+MalwareBazaar / Feodo Tracker) already deliver indicators in fields, so their
+ingestion is pure normalization + a batched, idempotent `MERGE` — **zero** LLM
+calls and **zero** embeddings per IOC. AI stays reserved for free-text
+`ingest-doc`. (OTX pulse *descriptions* can optionally be embedded for semantic
+search via `OTX_EMBED_DESCRIPTIONS`, off by default; a test asserts a structured
+feed makes no calls to the AI provider.)
+
 <p align="center">
   <img src="assets/pipeline.svg" alt="ThreatWeave pipeline: sources feed ingestion; regex and LLM process in parallel and merge; Neo4j and pgvector store; deterministic correlation serves the FastAPI endpoints; narratives are generated only on demand" width="720">
 </p>
@@ -84,6 +93,8 @@ and requires analyst verification.
 - React + Vite + TypeScript frontend with a Cytoscape.js graph view
 - Docker Compose for local infrastructure
 - Deterministic IOC extraction via regex/parsers (no AI)
+- Structured feed connectors (AlienVault OTX, abuse.ch URLhaus / MalwareBazaar / Feodo Tracker)
+- Scheduled, idempotent batch ingestion (cron-friendly CLI)
 - pytest, ruff, full type hints
 
 ## Project layout
@@ -93,13 +104,15 @@ src/threatweave/
 ├── config.py            # pydantic-settings, loaded from .env
 ├── models/              # domain models (IOC, Actor, Campaign, TTP, graph value objects) + normalization
 ├── parsers/             # deterministic regex IOC parser (+ refanging)
-├── connectors/          # ingestion sources: AlienVault OTX + free-text/URL documents
-├── graph/               # GraphStore port + Neo4j and in-memory adapters + factory
+├── connectors/          # ingestion sources: OTX, abuse.ch (URLhaus/MalwareBazaar/Feodo), documents + shared retry
+├── graph/               # GraphStore port (incl. batch UNWIND+MERGE upserts) + Neo4j and in-memory adapters
 ├── vector/              # VectorStore port + pgvector and in-memory adapters + factory
 ├── correlation/         # correlate() (structural + semantic) and similar()
-├── ingest.py            # OTX payload / extracted document -> graph (+ cached embeddings)
+├── ingest.py            # OTX payload / structured feed / document -> graph (batched, + cached embeddings)
+├── ingest_runner.py     # multi-source scheduled ingestion: dedup, per-source isolation, AI-free feeds
+├── ingest_state.py      # persistent per-source run state (dedup hash + status), shared CLI <-> API
 ├── llm/                 # LLMProvider interface + OpenAI provider, Ollama stub, cost, narrative, factory
-├── cli.py               # `threatweave` CLI (ingest-doc, demo)
+├── cli.py               # `threatweave` CLI (ingest, ingest-doc, demo)
 └── api/                 # FastAPI app, routes and API-key/rate-limit gating (security.py)
 
 frontend/                # React + Vite single-page graph explorer
@@ -125,6 +138,16 @@ cp .env.example .env
 
 Key variables: `NEO4J_*`, `POSTGRES_*`, `OTX_API_KEY`, `API_*`,
 `GRAPH_BACKEND` (`neo4j` | `memory`) and `SEED_SAMPLE`.
+
+**Feeds and scheduled ingestion.** Each source is enabled per `.env`:
+`OTX_ENABLED` and `ABUSECH_ENABLED` (the three abuse.ch feeds share one flag).
+abuse.ch gates URLhaus and MalwareBazaar behind a single account key
+(`ABUSECH_AUTH_KEY`); Feodo Tracker is public. `threatweave ingest --all`
+persists a per-source run record to `INGEST_STATE_PATH`
+(`data/ingest_state.json`, git-ignored), and `INGEST_INTERVAL_MINUTES` is the
+recommended cadence for the cron/Task Scheduler job that drives it.
+`OTX_EMBED_DESCRIPTIONS` (default `false`) keeps scheduled OTX ingestion free of
+AI calls; set it to `true` to embed pulse descriptions for semantic search.
 
 **API gating and rate limiting.** The `/api/*` routes accept an optional
 `X-API-Key` header, enabled only when `API_KEY` is set (unset — the demo — leaves
@@ -226,6 +249,7 @@ cd frontend && npm run dev       # terminal 2: Vite on :5173
 | GET    | `/api/expand`     | Neighbourhood subgraph around any node id.             |
 | GET    | `/api/similar`    | Semantic nearest neighbours of an entity.              |
 | GET    | `/api/narrative`  | On-demand natural-language explanation for an indicator.|
+| GET    | `/api/ingest/status` | Last ingestion outcome per source (time, counts, errors).|
 
 `GET /api/correlate?ioc=<value>&depth=<1..4>` — the indicator type is inferred
 from the value (IP, domain, hash or URL). Returns `404` if the indicator is not
@@ -252,6 +276,44 @@ consider similarity edges. Responds `404` if the indicator is absent, or `503`
 if no LLM provider is configured. The narrative always ends with a
 verification disclaimer.
 
+`GET /api/ingest/status` — returns the last run of each ingestion source as
+`{ "sources": [{ "source", "status", "last_run", "new_iocs", "total_iocs",
+"error", "payload_hash" }] }`. It reads the persistent state file written by
+`threatweave ingest` (usually a separate scheduler process), so the API surfaces
+the freshest run without sharing memory with it. Sources that have never run are
+omitted. Pure observability — no graph or AI access.
+
+## Automated ingestion (feeds)
+
+`threatweave ingest` pulls IOCs from structured feeds and writes them to the
+graph — efficiently and idempotently, with **no AI**. Indicators are batched into
+a single `UNWIND` + `MERGE` per backend (not one transaction per IOC), and the
+deterministic node ids make re-ingestion repeatable: nothing is duplicated, and
+the same indicator from two feeds resolves to one node (automatic cross-source
+correlation). A per-source payload hash skips a feed whose contents are unchanged
+since the last run.
+
+```bash
+threatweave ingest --all                          # every enabled source
+threatweave ingest --source urlhaus --source feodo # a specific subset
+```
+
+Sources: `otx`, `urlhaus`, `malwarebazaar`, `feodo`. Each connector handles
+network errors, backs off on rate limits (HTTP 429), and — for abuse.ch —
+authenticates with `ABUSECH_AUTH_KEY`. Every run is recorded (queryable at
+`/api/ingest/status`).
+
+**Cron-friendly.** The command runs once and exits, so any scheduler drives the
+cadence (`INGEST_INTERVAL_MINUTES` documents the recommended interval):
+
+```bash
+# Linux/macOS cron — every hour
+0 * * * * cd /path/to/threatweave && /path/to/.venv/bin/threatweave ingest --all
+
+# Windows Task Scheduler — hourly
+schtasks /create /tn ThreatWeaveIngest /tr "threatweave ingest --all" /sc hourly
+```
+
 ## Ingesting documents (CLI)
 
 `threatweave ingest-doc` ingests an unstructured threat report — a blog post,
@@ -273,10 +335,13 @@ through `/api/correlate`.
 ## Testing
 
 The full suite runs offline — no Neo4j, pgvector, Docker, network or API keys
-required. Correlation and similarity run against in-memory stores, the OTX
-connector against a mocked transport, and the LLM provider is fully mocked (fixed
-extractions and deterministic embeddings), so extraction, embeddings and document
-ingestion are tested without any real API calls:
+required. Correlation and similarity run against in-memory stores, every feed
+connector (OTX and the three abuse.ch feeds) against a mocked transport, and the
+LLM provider is fully mocked (fixed extractions and deterministic embeddings), so
+extraction, embeddings and document ingestion are tested without any real API
+calls. Guardrail tests assert that batched upserts stay idempotent (re-ingestion
+never duplicates), that an unchanged feed is skipped, and that structured-feed
+ingestion makes **zero** calls to the AI provider:
 
 ```bash
 pytest          # run tests
@@ -318,3 +383,11 @@ ruff check .    # lint
   gating plus per-client rate limiting on the API, and a one-command
   keyless demo (`threatweave demo`, in-memory seeded graph) that also serves the
   built frontend.
+- [x] **Phase 6 — Automated feed ingestion**: structured-feed connectors
+  (abuse.ch URLhaus, MalwareBazaar, Feodo Tracker) sharing the OTX pattern, with
+  network-error handling, rate-limit backoff and fully mocked tests. Batched
+  `UNWIND` + `MERGE` upserts make ingestion fast and idempotent; a payload-hash
+  dedup skips unchanged feeds. A cron-friendly `threatweave ingest --all` runs
+  every enabled source, `GET /api/ingest/status` reports the last run per source,
+  and structured feeds stay strictly AI-free (embeddings/extraction remain the
+  preserve of free-text `ingest-doc`).
