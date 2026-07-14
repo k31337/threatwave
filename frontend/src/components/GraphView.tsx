@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef } from "react";
 import CytoscapeComponent from "react-cytoscapejs";
 import type cytoscape from "cytoscape";
 import type { Subgraph } from "../api/types";
-import { elementsFromSubgraph, stylesheet } from "../graph/style";
+import { buildStylesheet, elementsFromSubgraph } from "../graph/style";
 
 interface GraphViewProps {
   graph: Subgraph;
@@ -35,6 +35,9 @@ export function GraphView({ graph, selectedId, onSelect, onExpand }: GraphViewPr
   // Keep the latest callbacks reachable from the once-registered event handlers.
   const handlers = useRef({ onSelect, onExpand });
   handlers.current = { onSelect, onExpand };
+
+  // Built once, after the CSS tokens it reads are applied to the document.
+  const stylesheet = useMemo(() => buildStylesheet(), []);
 
   // A signature of the graph contents; changes only on search/expand, not on
   // selection. Drives both element memoisation and layout re-runs.
@@ -72,6 +75,16 @@ export function GraphView({ graph, selectedId, onSelect, onExpand }: GraphViewPr
       } else {
         lastTap.current = { id, time: now };
       }
+    });
+
+    // Hover feedback: a red halo on the node and a pointer cursor.
+    cy.on("mouseover", "node", (event) => {
+      event.target.addClass("hover");
+      cy.container()?.style.setProperty("cursor", "pointer");
+    });
+    cy.on("mouseout", "node", (event) => {
+      event.target.removeClass("hover");
+      cy.container()?.style.setProperty("cursor", "default");
     });
   };
 

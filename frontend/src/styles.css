@@ -30,17 +30,26 @@
   --color-danger-bg: rgba(214, 40, 40, 0.16);
   --color-danger-border: rgba(232, 72, 80, 0.5);
 
-  /* Graph node colours by kind: warm reds/ambers tie to the brand for the threat
-     core; two cool hues (violet, teal) keep TTP/Sector distinguishable. */
-  --kind-ioc: #ff6b6b;
-  --kind-actor: #d92d34;
-  --kind-campaign: #f2a13f;
-  --kind-ttp: #c77dff;
-  --kind-sector: #4ecdc4;
+  /* Graph node colours by kind: a single warm-red ramp (deep crimson → coral →
+     orange-red → rose) so the whole graph stays on-brand. Kinds that sit close
+     in hue are further separated by shape and size in the Cytoscape stylesheet. */
+  --kind-ioc: #ff5c5c;
+  --kind-actor: #8f1d1d;
+  --kind-campaign: #d92d34;
+  --kind-ttp: #ff8a3d;
+  --kind-sector: #ff9db0;
 
-  /* Graph edges. */
-  --edge: #5c616e;
-  --edge-semantic: #ff7597;
+  /* Node chrome and label legibility (labels sit on the dark canvas). */
+  --node-border: #0e0f13;
+  --node-border-actor: #ff5c5c; /* light rim so the deep-crimson actor reads */
+  --node-selected: #ffffff;
+  --node-halo: #e84850; /* underlay glow on hover/selection */
+  --label-color: #eef1f6;
+  --label-outline: #0e0f13;
+
+  /* Graph edges: structural muted so nodes pop; semantic a distinct dashed rose. */
+  --edge: #6b585b;
+  --edge-semantic: #ff6f91;
 
   /* Spacing scale (0.25rem steps) and shape. */
   --space-1: 0.25rem;
@@ -342,6 +351,7 @@ body {
 }
 .detail__badge--campaign {
   background: var(--kind-campaign);
+  color: var(--color-on-primary);
 }
 .detail__badge--ttp {
   background: var(--kind-ttp);
