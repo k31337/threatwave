@@ -10,6 +10,7 @@ from threatweave.config import get_settings
 from threatweave.correlation.correlate import correlate
 from threatweave.correlation.similar import similar
 from threatweave.graph.base import GraphStore
+from threatweave.ingest_state import IngestState, SourceState
 from threatweave.llm.base import LLMProvider
 from threatweave.models.graph import Subgraph
 from threatweave.vector.base import VectorStore
@@ -50,6 +51,12 @@ class NarrativeResponse(BaseModel):
     ioc: str
     narrative: str
     model: str
+
+
+class IngestStatusResponse(BaseModel):
+    """Response of ``/api/ingest/status``: the last run per source."""
+
+    sources: list[SourceState]
 
 
 @router.get("/health")
@@ -173,3 +180,19 @@ def get_narrative(
     narrative = provider.narrate(subgraph)
     model = getattr(provider, "narrative_model", None) or get_settings().llm.narrative_model
     return NarrativeResponse(ioc=ioc, narrative=narrative, model=model)
+
+
+@router.get("/api/ingest/status", response_model=IngestStatusResponse, dependencies=_api_deps)
+@limiter.limit(rate_limit)
+def get_ingest_status(request: Request) -> IngestStatusResponse:
+    """Return the last ingestion outcome for each source.
+
+    Reads the persistent ingest-state file (written by ``threatweave ingest``,
+    typically in a separate cron/scheduler process), so it reflects the most
+    recent run: when it ran, how many IOCs it wrote, and any error. Sources that
+    have never run simply do not appear. This is pure observability — no graph or
+    AI access.
+    """
+    state = IngestState(get_settings().ingest_state_path)
+    sources = sorted(state.snapshot().sources.values(), key=lambda s: s.source)
+    return IngestStatusResponse(sources=sources)
