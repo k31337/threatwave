@@ -8,6 +8,7 @@ so correlation logic can be tested without a database.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 
 from threatweave.graph.base import GraphStore
 from threatweave.models.graph import (
@@ -55,6 +56,29 @@ class InMemoryGraphStore(GraphStore):
         self._edges.add(Edge(source=source_id, target=target_id, type=rel_type))
         self._adjacency[source_id].add(target_id)
         self._adjacency[target_id].add(source_id)
+
+    def upsert_iocs(self, iocs: Sequence[IOC]) -> list[Node]:
+        # Dedup by id, preserving first-seen order (the Node is identical for a
+        # given id, so overwriting the dict value is harmless).
+        nodes: dict[str, Node] = {}
+        for ioc in iocs:
+            node = Node(id=ioc_node_id(ioc), kind="ioc", label=ioc.value)
+            nodes[node.id] = node
+        for node in nodes.values():
+            self._nodes[node.id] = node
+        return list(nodes.values())
+
+    def add_edges(self, edges: Sequence[tuple[str, str, RelationType]]) -> None:
+        edges = list(edges)
+        # Validate every endpoint up front so the batch is all-or-nothing.
+        for source_id, target_id, _ in edges:
+            for node_id in (source_id, target_id):
+                if node_id not in self._nodes:
+                    raise KeyError(f"unknown node: {node_id!r}")
+        for source_id, target_id, rel_type in edges:
+            self._edges.add(Edge(source=source_id, target=target_id, type=rel_type))
+            self._adjacency[source_id].add(target_id)
+            self._adjacency[target_id].add(source_id)
 
     def get_node(self, node_id: str) -> Node | None:
         return self._nodes.get(node_id)

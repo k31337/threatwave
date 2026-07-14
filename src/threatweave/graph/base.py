@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from threatweave.models.graph import Node, RelationType, Subgraph
 from threatweave.models.ioc import IOC, Actor, Campaign
@@ -43,6 +44,32 @@ class GraphStore(ABC):
         """Assert a directed relationship between two existing nodes.
 
         Both endpoints must already exist. Adding the same edge twice is a no-op.
+        """
+
+    # --- Batch writes (the efficient ingestion path) ---
+
+    @abstractmethod
+    def upsert_iocs(self, iocs: Sequence[IOC]) -> list[Node]:
+        """Upsert many IOCs in a single batch and return their nodes.
+
+        Semantically equivalent to calling :meth:`upsert_ioc` for each input, but
+        the backend writes them in one round trip (the Neo4j adapter issues a
+        single ``UNWIND`` + ``MERGE`` rather than one transaction per IOC). This
+        is the key efficiency lever for feed ingestion: group and write in bulk.
+
+        Idempotent: nodes are MERGEd on their deterministic id, so re-ingesting
+        the same IOCs neither duplicates nodes nor errors. The returned nodes are
+        deduplicated by id, preserving first-seen order.
+        """
+
+    @abstractmethod
+    def add_edges(self, edges: Sequence[tuple[str, str, RelationType]]) -> None:
+        """Assert many directed relationships in a single batch.
+
+        Each tuple is ``(source_id, target_id, rel_type)``. Every endpoint must
+        already exist; if any is unknown the whole batch is rejected with a
+        ``KeyError`` (all-or-nothing), so partial writes never leak. Re-asserting
+        an existing edge is a no-op, keeping repeated ingestion idempotent.
         """
 
     # --- Reads ---

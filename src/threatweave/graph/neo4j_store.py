@@ -12,6 +12,8 @@ integration testing / manual runs rather than the offline unit tests, which use
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from neo4j import GraphDatabase
 
 from threatweave.graph.base import GraphStore
@@ -89,6 +91,45 @@ class Neo4jGraphStore(GraphStore):
                 raise KeyError(
                     f"cannot link unknown nodes: {source_id!r} -> {target_id!r}"
                 )
+
+    def upsert_iocs(self, iocs: Sequence[IOC]) -> list[Node]:
+        # Dedup by id, preserving first-seen order; all IOC nodes share the IOC
+        # label so a single UNWIND + MERGE writes the whole batch at once.
+        nodes: dict[str, Node] = {}
+        for ioc in iocs:
+            node = Node(id=ioc_node_id(ioc), kind="ioc", label=ioc.value)
+            nodes[node.id] = node
+        if not nodes:
+            return []
+        rows = [{"id": n.id, "kind": n.kind, "label": n.label} for n in nodes.values()]
+        query = (
+            "UNWIND $rows AS row "
+            "MERGE (n:IOC {id: row.id}) "
+            "SET n.kind = row.kind, n.label = row.label"
+        )
+        with self._driver.session() as session:
+            session.run(query, rows=rows).consume()
+        return list(nodes.values())
+
+    def add_edges(self, edges: Sequence[tuple[str, str, RelationType]]) -> None:
+        edges = list(edges)
+        if not edges:
+            return
+        endpoint_ids = {e[0] for e in edges} | {e[1] for e in edges}
+        rows = [{"source": s, "target": t, "type": rt.value} for s, t, rt in edges]
+        # One round trip to validate endpoints (all-or-nothing), one to write.
+        find_query = "UNWIND $ids AS id MATCH (n {id: id}) RETURN collect(DISTINCT n.id) AS found"
+        write_query = (
+            "UNWIND $rows AS row "
+            "MATCH (a {id: row.source}), (b {id: row.target}) "
+            "MERGE (a)-[r:LINKED {type: row.type}]->(b)"
+        )
+        with self._driver.session() as session:
+            found = session.run(find_query, ids=list(endpoint_ids)).single()["found"]
+            missing = endpoint_ids - set(found)
+            if missing:
+                raise KeyError(f"cannot link unknown nodes: {sorted(missing)!r}")
+            session.run(write_query, rows=rows).consume()
 
     def _edge_exists(
         self, source_id: str, target_id: str, rel_type: RelationType
