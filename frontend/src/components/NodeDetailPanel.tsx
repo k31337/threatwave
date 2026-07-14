@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import { similar } from "../api/client";
 import { describeError } from "../api/errors";
 import type { GraphNode, SimilarNeighbor } from "../api/types";
-import { KIND_COLOR } from "../graph/style";
 import { useNarrative } from "../hooks/useNarrative";
 import { NarrativePanel } from "./NarrativePanel";
 
@@ -54,12 +53,7 @@ export function NodeDetailPanel({ node, onClose }: NodeDetailPanelProps) {
   return (
     <aside className="detail">
       <header className="detail__header">
-        <span
-          className="detail__badge"
-          style={{ backgroundColor: KIND_COLOR[node.kind] }}
-        >
-          {node.kind}
-        </span>
+        <span className={`detail__badge detail__badge--${node.kind}`}>{node.kind}</span>
         <button className="detail__close" onClick={onClose} aria-label="Close panel">
           ×
         </button>
