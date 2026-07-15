@@ -93,7 +93,7 @@ class OpenAIProvider(LLMProvider):
                 {"role": "user", "content": text},
             ],
             response_format=_LLMExtraction,
-            max_tokens=self._max_output_tokens,
+            max_completion_tokens=self._max_output_tokens,
             temperature=0,
         )
 
@@ -163,7 +163,7 @@ class OpenAIProvider(LLMProvider):
         completion = self._client.chat.completions.create(
             model=self._narrative_model,
             messages=build_messages(subgraph),
-            max_tokens=self._max_output_tokens,
+            max_completion_tokens=self._max_output_tokens,
             temperature=0.2,
         )
 

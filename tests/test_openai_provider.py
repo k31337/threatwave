@@ -9,6 +9,7 @@ import pytest
 
 from threatweave.llm.cost import Usage, estimate_cost
 from threatweave.llm.openai_provider import _LLMTTP, OpenAIProvider, _LLMExtraction
+from threatweave.models.graph import Subgraph
 
 
 def _make_client(parsed: _LLMExtraction | None) -> tuple[Any, dict[str, Any]]:
@@ -26,6 +27,36 @@ def _make_client(parsed: _LLMExtraction | None) -> tuple[Any, dict[str, Any]]:
 
     client = SimpleNamespace(
         beta=SimpleNamespace(chat=SimpleNamespace(completions=_Completions()))
+    )
+    return client, calls
+
+
+def _dual_client() -> tuple[Any, dict[str, dict[str, Any]]]:
+    """Fake client capturing kwargs for both extract's parse() and narrate's create()."""
+    calls: dict[str, dict[str, Any]] = {"parse": {}, "create": {}}
+    parsed = _LLMExtraction(ttps=[], actor=None, target_sectors=[])
+    parse_completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(parsed=parsed))],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+    )
+    create_completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="A narrative."))],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+    )
+
+    class _ParseCompletions:
+        def parse(self, **kwargs: Any) -> Any:
+            calls["parse"].update(kwargs)
+            return parse_completion
+
+    class _CreateCompletions:
+        def create(self, **kwargs: Any) -> Any:
+            calls["create"].update(kwargs)
+            return create_completion
+
+    client = SimpleNamespace(
+        beta=SimpleNamespace(chat=SimpleNamespace(completions=_ParseCompletions())),
+        chat=SimpleNamespace(completions=_CreateCompletions()),
     )
     return client, calls
 
@@ -60,7 +91,7 @@ def test_extract_uses_structured_output_schema() -> None:
 
     assert calls["model"] == "gpt-4o-mini"
     assert calls["response_format"] is _LLMExtraction
-    assert calls["max_tokens"] == 256
+    assert calls["max_completion_tokens"] == 256
 
 
 def test_extract_raises_when_no_parsed_result() -> None:
@@ -89,3 +120,29 @@ def test_cost_estimation_narrative_model() -> None:
     assert cost == pytest.approx(0.75 + 4.50)
     # It is priced, not "unknown".
     assert cost is not None
+
+
+def test_extract_sends_max_completion_tokens_not_max_tokens() -> None:
+    # Regression: GPT-5 models reject `max_tokens` and require
+    # `max_completion_tokens`; sending the former 400s. Reintroducing it here
+    # (or dropping the new name) makes one of these assertions fail.
+    client, calls = _dual_client()
+    provider = OpenAIProvider(client=client, model="gpt-5-mini", max_output_tokens=256)
+
+    provider.extract("some report text")
+
+    assert calls["parse"]["max_completion_tokens"] == 256
+    assert "max_tokens" not in calls["parse"]
+
+
+def test_narrate_sends_max_completion_tokens_not_max_tokens() -> None:
+    # Same regression guard for the narrative path (chat.completions.create).
+    client, calls = _dual_client()
+    provider = OpenAIProvider(
+        client=client, narrative_model="gpt-5.4-mini", max_output_tokens=256
+    )
+
+    provider.narrate(Subgraph())
+
+    assert calls["create"]["max_completion_tokens"] == 256
+    assert "max_tokens" not in calls["create"]
